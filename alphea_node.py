@@ -21,10 +21,57 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        global session_id, accumulated_seconds
+        if self.path == '/restart-session':
+            print('[*] [MANUAL TRIGGER] Restarting session via web request...')
+            session_id = None
+            accumulated_seconds = 0
+            start_foreground_session()
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write(b"<h3>Session refreshed successfully!</h3><p>Redirecting to dashboard...</p><script>setTimeout(() => window.location.href='/', 1500);</script>")
+            return
+            
         self.send_response(200)
-        self.send_header('Content-type', 'text/plain')
+        self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
-        self.wfile.write(b"ALPHEA Node is active 24/7!\n")
+        uptime_str = format_time(accumulated_seconds)
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ALPHEA Node Live Dashboard</title>
+    <meta http-equiv="refresh" content="30">
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 20px; }}
+        .card {{ max-width: 600px; margin: 20px auto; background: #1e293b; border-radius: 12px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }}
+        h1 {{ color: #38bdf8; margin-top: 0; font-size: 24px; }}
+        .stat {{ display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #334155; }}
+        .stat-label {{ color: #94a3b8; font-weight: 500; }}
+        .stat-value {{ font-weight: bold; color: #4ade80; }}
+        .btn {{ display: inline-block; margin-top: 20px; background: #2563eb; color: white; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: 500; }}
+        .btn:hover {{ background: #1d4ed8; }}
+        .badge {{ background: #10b981; color: #042f2e; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h1>ALPHEA Headless Node</h1>
+            <span class="badge">ONLINE 24/7</span>
+        </div>
+        <div class="stat"><span class="stat-label">Total Balance:</span><span class="stat-value">{cached_balance:,} Points</span></div>
+        <div class="stat"><span class="stat-label">PC Session Uptime:</span><span class="stat-value">{uptime_str} ({accumulated_seconds:,}s)</span></div>
+        <div class="stat"><span class="stat-label">Account:</span><span style="color:#cbd5e1;">{USER_EMAIL}</span></div>
+        <div class="stat"><span class="stat-label">Device ID:</span><span style="font-family:monospace; color:#cbd5e1; font-size:12px;">{DEVICE_ID}</span></div>
+        <div style="margin-top:15px; font-size:12px; color:#94a3b8;">* Auto-refreshes every 30 seconds. Managed 24/7.</div>
+        <a href="/restart-session" class="btn" onclick="return confirm('Restart foreground session to reset 24h timer?')">Force Reset 24h Session</a>
+    </div>
+</body>
+</html>"""
+        self.wfile.write(html.encode('utf-8'))
     def log_message(self, format, *args):
         pass
 
@@ -286,7 +333,19 @@ def submit_heartbeat():
         
         if r.status_code == 200:
             data = r.json()
-            accumulated_seconds = int(data.get('accumulatedValidSeconds', str(accumulated_seconds)))
+            new_seconds = int(data.get('accumulatedValidSeconds', str(accumulated_seconds)))
+            
+            # If 24-hour session limit reached (86,400s), rotate to fresh session for new day!
+            if new_seconds >= 86400:
+                print(f'\n[*] [CYCLE COMPLETE] 24-Hour limit reached ({new_seconds:,}s)!')
+                print('[*] Rotating to fresh new-day session to continue mining & quests...')
+                session_id = None
+                accumulated_seconds = 0
+                time.sleep(2)
+                start_foreground_session()
+                return
+
+            accumulated_seconds = new_seconds
             today_total = fetch_and_claim_quests()
             display_dashboard(accumulated_seconds, today_total)
             print(f'[{timestamp}] [HEARTBEAT] Sync OK (200) | Valid Session Active | Next tick in 60s...')
@@ -303,6 +362,7 @@ def submit_heartbeat():
         print(f'[!] [HEARTBEAT] Glitch: {e}')
 
 def main():
+    global session_id, accumulated_seconds
     load_session()
     print('=================================================================')
     print('ALPHEA CONNECT - HEADLESS NODE DAEMON (STEALTH ANDROID MODE)')
@@ -315,9 +375,19 @@ def main():
     fetch_and_claim_quests()
     start_foreground_session()
     
+    last_utc_day = datetime.datetime.now(datetime.timezone.utc).day
     tick = 0
     while True:
         try:
+            # Check for UTC midnight day rollover (when daily quests reset)
+            current_utc_day = datetime.datetime.now(datetime.timezone.utc).day
+            if current_utc_day != last_utc_day:
+                print(f'\n[*] [DAY ROLLOVER] New day detected! Resetting session for new daily rewards...')
+                last_utc_day = current_utc_day
+                session_id = None
+                accumulated_seconds = 0
+                start_foreground_session()
+
             if time.time() - last_token_refresh > 2700:
                 refresh_access_token()
                 
