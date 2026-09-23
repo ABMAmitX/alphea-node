@@ -16,8 +16,108 @@ import json
 import random
 import os
 import uuid
+import base64
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+
+def build_quests_html():
+    global last_quests_data, accumulated_seconds
+    if not last_quests_data:
+        try:
+            fetch_and_claim_quests()
+        except Exception:
+            pass
+            
+    html_items = []
+    
+    # 1. Daily Check-in / Login Quest
+    login_q = next((q for q in last_quests_data if q.get('questId') == 'daily-login-1'), None)
+    if login_q:
+        state = login_q.get('state', '')
+        reward = int(login_q.get('reward', {}).get('micros', 0)) // 1000000
+        if state == 'QUEST_STATE_CLAIMED':
+            badge = f'<span style="background:#10b981; color:#042f2e; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">CLAIMED OK (+{reward:,} Pts)</span>'
+        else:
+            badge = f'<span style="background:#f59e0b; color:#451a03; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">PENDING AUTO-CLAIM...</span>'
+        html_items.append(f"""
+        <div style="padding:12px 0; border-bottom:1px solid #334155; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+                <div style="font-weight:600; color:#f8fafc; font-size:14px;">📅 Daily Login Check-in</div>
+                <div style="font-size:12px; color:#94a3b8;">Automatic 1x per day reward</div>
+            </div>
+            {badge}
+        </div>
+        """)
+        
+    # 2. Foreground Mining Quests
+    fg_quests = [q for q in last_quests_data if 'daily-foreground' in q.get('questId', '')]
+    fg_quests.sort(key=lambda x: int(x.get('targetValue', 0)))
+    
+    defaults = [
+        ('1H Mining Contribution', 3600, 800),
+        ('3H Mining Contribution', 10800, 1300),
+        ('6H Mining Contribution', 21600, 1800),
+        ('12H Mining Contribution', 43200, 2500)
+    ]
+    
+    if not fg_quests:
+        for name, target, reward in defaults:
+            pct = min(100.0, (accumulated_seconds / target) * 100.0)
+            html_items.append(f"""
+            <div style="padding:12px 0; border-bottom:1px solid #334155;">
+                <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600;">
+                    <span>⏱️ {name}</span>
+                    <span style="color:#38bdf8;">{pct:.1f}% ({format_time(accumulated_seconds)} / {format_time(target)})</span>
+                </div>
+                <div style="background:#334155; border-radius:6px; height:8px; width:100%; margin:6px 0; overflow:hidden;">
+                    <div style="background:#38bdf8; height:100%; width:{pct}%;"></div>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:12px; color:#94a3b8;">
+                    <span>Reward: +{reward:,} Pts</span>
+                    <span>In Progress</span>
+                </div>
+            </div>
+            """)
+    else:
+        for q in fg_quests:
+            target = int(q.get('targetValue', 0))
+            measured = int(q.get('measuredValue', 0))
+            state = q.get('state', '')
+            reward = int(q.get('reward', {}).get('micros', 0)) // 1000000
+            hours = target // 3600
+            name = f"{hours}H Mining Contribution"
+            effective_val = max(measured, accumulated_seconds)
+            pct = min(100.0, (effective_val / target) * 100.0) if target > 0 else 100.0
+            
+            if state == 'QUEST_STATE_CLAIMED':
+                tag = '<span style="color:#4ade80; font-weight:bold;">[CLAIMED OK]</span>'
+                bar_color = '#10b981'
+            elif effective_val >= target:
+                tag = f'<span style="color:#fbbf24; font-weight:bold;">+{reward:,} Pts [READY TO AUTO-CLAIM]</span>'
+                bar_color = '#fbbf24'
+            else:
+                rem_sec = max(0, target - effective_val)
+                rem_m = rem_sec // 60
+                tag = f'<span style="color:#94a3b8;">+{reward:,} Pts (ETA: ~{rem_m}m)</span>'
+                bar_color = '#38bdf8'
+                
+            html_items.append(f"""
+            <div style="padding:12px 0; border-bottom:1px solid #334155;">
+                <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600;">
+                    <span>⏱️ {name}</span>
+                    <span style="color:#38bdf8;">{pct:.1f}% ({format_time(effective_val)} / {format_time(target)})</span>
+                </div>
+                <div style="background:#334155; border-radius:6px; height:8px; width:100%; margin:6px 0; overflow:hidden;">
+                    <div style="background:{bar_color}; height:100%; width:{pct}%;"></div>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:12px; color:#94a3b8;">
+                    <span>Target: {format_time(target)}</span>
+                    <span>{tag}</span>
+                </div>
+            </div>
+            """)
+            
+    return "".join(html_items)
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -37,23 +137,26 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
         uptime_str = format_time(accumulated_seconds)
+        quests_html = build_quests_html()
+        
         html = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>ALPHEA Node Live Dashboard</title>
-    <meta http-equiv="refresh" content="30">
+    <meta http-equiv="refresh" content="20">
     <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 20px; }}
-        .card {{ max-width: 600px; margin: 20px auto; background: #1e293b; border-radius: 12px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }}
-        h1 {{ color: #38bdf8; margin-top: 0; font-size: 24px; }}
-        .stat {{ display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #334155; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b1120; color: #e2e8f0; padding: 20px; }}
+        .card {{ max-width: 620px; margin: 20px auto; background: #1e293b; border-radius: 14px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }}
+        h1 {{ color: #38bdf8; margin-top: 0; font-size: 22px; }}
+        h2 {{ color: #94a3b8; font-size: 15px; margin-top: 24px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #334155; padding-bottom: 6px; }}
+        .stat {{ display: flex; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid #334155; font-size: 14px; }}
         .stat-label {{ color: #94a3b8; font-weight: 500; }}
         .stat-value {{ font-weight: bold; color: #4ade80; }}
-        .btn {{ display: inline-block; margin-top: 20px; background: #2563eb; color: white; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: 500; }}
+        .btn {{ display: inline-block; margin-top: 20px; background: #2563eb; color: white; padding: 10px 18px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 13px; }}
         .btn:hover {{ background: #1d4ed8; }}
-        .badge {{ background: #10b981; color: #042f2e; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }}
+        .badge {{ background: #10b981; color: #042f2e; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }}
     </style>
 </head>
 <body>
@@ -64,9 +167,14 @@ class HealthHandler(BaseHTTPRequestHandler):
         </div>
         <div class="stat"><span class="stat-label">Total Balance:</span><span class="stat-value">{cached_balance:,} Points</span></div>
         <div class="stat"><span class="stat-label">PC Session Uptime:</span><span class="stat-value">{uptime_str} ({accumulated_seconds:,}s)</span></div>
+        <div class="stat"><span class="stat-label">GitHub Auto-Sync:</span><span class="stat-value" style="color: {'#4ade80' if get_github_token() else '#facc15'};">{'ACTIVE (Safe from restarts)' if get_github_token() else 'Disabled (Add GITHUB_TOKEN)'}</span></div>
         <div class="stat"><span class="stat-label">Account:</span><span style="color:#cbd5e1;">{USER_EMAIL}</span></div>
         <div class="stat"><span class="stat-label">Device ID:</span><span style="font-family:monospace; color:#cbd5e1; font-size:12px;">{DEVICE_ID}</span></div>
-        <div style="margin-top:15px; font-size:12px; color:#94a3b8;">* Auto-refreshes every 30 seconds. Managed 24/7.</div>
+        
+        <h2>🎯 Live Daily Missions & Quests</h2>
+        {quests_html}
+        
+        <div style="margin-top:16px; font-size:12px; color:#94a3b8;">* Auto-refreshes every 20 seconds. Automated 24/7 background mining.</div>
         <a href="/restart-session" class="btn" onclick="return confirm('Restart foreground session to reset 24h timer?')">Force Reset 24h Session</a>
     </div>
 </body>
@@ -89,8 +197,8 @@ SESSION_FILE = os.path.join(os.path.dirname(__file__), 'session.json')
 
 USER_EMAIL = 'amitb1612@gmail.com'
 USER_ID = '3050c315-aa28-4127-81c6-fa67c64f904e'
-REFRESH_TOKEN = 'hqFOokt1HIv0nI1eE6sUWOT5Tckis4jQ1scawcXFQhU'
-ACCESS_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFtaXRiMTYxMkBnbWFpbC5jb20iLCJzaWQiOiI4NTc0NzBkOS01ZDlhLTQ0YjQtYWE5Zi1mYWExNjA0NDQ1OTQiLCJhdXRoX3RpbWUiOjE3ODk0NTg3NTIsImlzcyI6ImFscGhlYS1jb25uZWN0Iiwic3ViIjoiMzA1MGMzMTUtYWEyOC00MTI3LTgxYzYtZmE2N2M2NGY5MDRlIiwiZXhwIjoxNzg5NDYyMzUyLCJpYXQiOjE3ODk0NTg3NTJ9.JaXblSadD0QVPo5vXTpeUnzdLVNWF-KqmUv1bcnnDpM'
+REFRESH_TOKEN = 'cRKqntpAVFatcxk0QpDM0O9gZxiWwoBltOtiWrGvMD4'
+ACCESS_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFtaXRiMTYxMkBnbWFpbC5jb20iLCJzaWQiOiIzYmEyOGJlYi0xM2YzLTQ1NDMtYmE5MC0yNzhlNjQ4YTUyOTEiLCJhdXRoX3RpbWUiOjE3ODk4MjUwMzgsImlzcyI6ImFscGhlYS1jb25uZWN0Iiwic3ViIjoiMzA1MGMzMTUtYWEyOC00MTI3LTgxYzYtZmE2N2M2NGY5MDRlIiwiZXhwIjoxNzkwMTc5MTAyLCJpYXQiOjE3OTAxNzU1MDJ9.1DJ3EOciYWUE4Iz3guJ1PQdsSpOVfi5wdJSsEI5mMd0'
 
 # Genuine Android Hardware Identifier (16-char Hex Android ID)
 DEVICE_ID = 'e4d7abm9y2c3f4e5'
@@ -100,24 +208,93 @@ HEARTBEAT_INTERVAL = 60
 
 session_id = None
 last_token_refresh = time.time()
-cached_balance = 3400
+cached_balance = 19200
 target_round_balance = 3000
 accumulated_seconds = 0
 last_quests_data = []
 
+def get_github_token():
+    return os.environ.get('GITHUB_TOKEN')
+
+def sync_to_github():
+    github_token = get_github_token()
+    if not github_token:
+        return
+    repo = os.environ.get('GITHUB_REPO', 'ABMAmitX/alphea-node')
+    file_path = 'session.json'
+    url = f'https://api.github.com/repos/{repo}/contents/{file_path}'
+    headers = {
+        'Authorization': f'Bearer {github_token}',
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'alphea-auto-sync'
+    }
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        sha = None
+        if r.status_code == 200:
+            sha = r.json().get('sha')
+        
+        data = {
+            'email': USER_EMAIL,
+            'userId': USER_ID,
+            'deviceId': DEVICE_ID,
+            'accessToken': ACCESS_TOKEN,
+            'refreshToken': REFRESH_TOKEN
+        }
+        content_bytes = json.dumps(data, indent=2).encode('utf-8')
+        content_b64 = base64.b64encode(content_bytes).decode('utf-8')
+        
+        payload = {
+            'message': '[Auto-Sync] Update rotated session tokens',
+            'content': content_b64
+        }
+        if sha:
+            payload['sha'] = sha
+            
+        r2 = requests.put(url, headers=headers, json=payload, timeout=10)
+        if r2.status_code in [200, 201]:
+            print('[*] [GITHUB AUTO-SYNC] Successfully synced latest rotated tokens to GitHub repository!')
+        else:
+            print(f'[!] [GITHUB AUTO-SYNC] Notice ({r2.status_code}): {r2.text[:100]}')
+    except Exception as e:
+        print(f'[!] [GITHUB AUTO-SYNC] Sync notice: {e}')
+
 def load_session():
     global USER_EMAIL, USER_ID, DEVICE_ID, ACCESS_TOKEN, REFRESH_TOKEN
+    # Check if GitHub token is provided to fetch latest persistent session directly from GitHub API
+    github_token = get_github_token()
+    repo = os.environ.get('GITHUB_REPO', 'ABMAmitX/alphea-node')
+    if github_token:
+        try:
+            url = f'https://api.github.com/repos/{repo}/contents/session.json'
+            r = requests.get(url, headers={'Authorization': f'Bearer {github_token}', 'User-Agent': 'alphea-node'}, timeout=10)
+            if r.status_code == 200:
+                raw = base64.b64decode(r.json()['content']).decode('utf-8')
+                data = json.loads(raw)
+                if data.get('refreshToken'):
+                    USER_EMAIL = data.get('email', USER_EMAIL)
+                    USER_ID = data.get('userId', USER_ID)
+                    DEVICE_ID = data.get('deviceId', DEVICE_ID)
+                    ACCESS_TOKEN = data.get('accessToken', ACCESS_TOKEN)
+                    REFRESH_TOKEN = data.get('refreshToken', REFRESH_TOKEN)
+                    print('[*] [PERSISTENCE] Loaded latest rotated session directly from GitHub API!')
+                    return
+        except Exception as e:
+            print(f'[!] [PERSISTENCE] GitHub fetch notice: {e}')
+
     if os.path.exists(SESSION_FILE):
         try:
             with open(SESSION_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                USER_EMAIL = data.get('email', USER_EMAIL)
-                USER_ID = data.get('userId', USER_ID)
-                DEVICE_ID = data.get('deviceId', DEVICE_ID)
-                ACCESS_TOKEN = data.get('accessToken', ACCESS_TOKEN)
-                REFRESH_TOKEN = data.get('refreshToken', REFRESH_TOKEN)
+                if data.get('refreshToken') and data.get('refreshToken') not in ['51Iw8ZN-GjGyyYICOUDsMEzpxdLpeP4X8f_SYyIdcvM', 'HQPQyQOtXUw4ArdFo0hckNB4Z7TZYzscayC0IJKDE90']:
+                    USER_EMAIL = data.get('email', USER_EMAIL)
+                    USER_ID = data.get('userId', USER_ID)
+                    DEVICE_ID = data.get('deviceId', DEVICE_ID)
+                    ACCESS_TOKEN = data.get('accessToken', ACCESS_TOKEN)
+                    REFRESH_TOKEN = data.get('refreshToken', REFRESH_TOKEN)
         except Exception:
             pass
+    save_session()
 
 def save_session():
     try:
@@ -132,6 +309,7 @@ def save_session():
             json.dump(data, f, indent=2)
     except Exception:
         pass
+    sync_to_github()
 
 def get_headers():
     return {
