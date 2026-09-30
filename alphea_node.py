@@ -133,6 +133,55 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.wfile.write(b"<h3>Session refreshed successfully!</h3><p>Redirecting to dashboard...</p><script>setTimeout(() => window.location.href='/', 1500);</script>")
             return
             
+        if self.path.startswith('/update-token'):
+            from urllib.parse import urlparse, parse_qs, unquote
+            global ACCESS_TOKEN, REFRESH_TOKEN, session_id, accumulated_seconds
+            query = parse_qs(urlparse(self.path).query)
+            token_json_raw = query.get('token', [None])[0]
+            if token_json_raw:
+                try:
+                    token_json_raw = unquote(token_json_raw)
+                    td = json.loads(token_json_raw)
+                    if 'session' in td:
+                        td = td['session']
+                    new_access = td.get('accessToken', '').strip()
+                    new_refresh = td.get('refreshToken', '').strip()
+                    if new_access and new_refresh:
+                        ACCESS_TOKEN = new_access
+                        REFRESH_TOKEN = new_refresh
+                        session_id = None
+                        accumulated_seconds = 0
+                        save_session()
+                        start_foreground_session()
+                        self.send_response(200)
+                        self.send_header('Content-type', 'text/html')
+                        self.end_headers()
+                        self.wfile.write(b'<h3>Token updated and session restarted!</h3><p>Redirecting to dashboard...</p><script>setTimeout(() => window.location.href=\'/\', 2000);</script>')
+                        print('[*] Token updated via /update-token endpoint')
+                        return
+                    else:
+                        self.send_response(400)
+                        self.send_header('Content-type', 'text/plain')
+                        self.end_headers()
+                        self.wfile.write(b'Error: Missing accessToken or refreshToken')
+                        return
+                except Exception as e:
+                    self.send_response(400)
+                    self.send_header('Content-type', 'text/plain')
+                    self.end_headers()
+                    self.wfile.write(('Error parsing token: ' + str(e)).encode())
+                    return
+            else:
+                self.send_response(200)
+                self.send_header('Content-type', 'text/html')
+                self.end_headers()
+                self.wfile.write(b'''<html><body style="font-family:sans-serif;background:#0b1120;color:#e2e8f0;padding:20px">
+<h2>Update ALPHEA Token</h2>
+<p>Paste your session JSON from the ALPHEA app:</p>
+<textarea id="t" style="width:100%;height:120px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;padding:8px;font-size:12px"></textarea><br><br>
+<button onclick="var j=document.getElementById(\'t\').value.trim();if(j)window.location.href=\'/update-token?token=\'+encodeURIComponent(j)" style="background:#2563eb;color:white;padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px">Update Token &amp; Restart</button>
+</body></html>''')
+                return
         self.send_response(200)
         self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
