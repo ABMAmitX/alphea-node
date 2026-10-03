@@ -121,7 +121,7 @@ def build_quests_html():
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        global session_id, accumulated_seconds
+        global session_id, accumulated_seconds, ACCESS_TOKEN, REFRESH_TOKEN
         if self.path == '/restart-session':
             print('[*] [MANUAL TRIGGER] Restarting session via web request...')
             session_id = None
@@ -135,7 +135,6 @@ class HealthHandler(BaseHTTPRequestHandler):
             
         if self.path.startswith('/update-token'):
             from urllib.parse import urlparse, parse_qs, unquote
-            global ACCESS_TOKEN, REFRESH_TOKEN, session_id, accumulated_seconds
             query = parse_qs(urlparse(self.path).query)
             token_json_raw = query.get('token', [None])[0]
             if token_json_raw:
@@ -387,7 +386,6 @@ def render_bar(current, total, length=14):
 
 def force_reload_token_from_github():
     """Pull latest token from GitHub session.json - used when local token is expired."""
-    global ACCESS_TOKEN, REFRESH_TOKEN
     gh_token = get_github_token()
     if not gh_token:
         print('[!] [SELFHEAL] No GITHUB_TOKEN env var - cannot reload from GitHub')
@@ -423,7 +421,6 @@ def force_reload_token_from_github():
 
 
 def refresh_access_token(retry_from_github=True):
-    global ACCESS_TOKEN, REFRESH_TOKEN, last_token_refresh
     url = f'{BASE_URL}/alphea.connect.v1.AuthService/RefreshSession'
     headers = {
         'Content-Type': 'application/json',
