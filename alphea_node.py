@@ -385,7 +385,44 @@ def render_bar(current, total, length=14):
     bar = '=' * filled + '-' * (length - filled)
     return bar, pct
 
-def refresh_access_token():
+def force_reload_token_from_github():
+    """Pull latest token from GitHub session.json - used when local token is expired."""
+    global ACCESS_TOKEN, REFRESH_TOKEN
+    gh_token = get_github_token()
+    if not gh_token:
+        print('[!] [SELFHEAL] No GITHUB_TOKEN env var - cannot reload from GitHub')
+        return False
+    try:
+        gh_headers = {
+            'Authorization': 'token ' + gh_token,
+            'Accept': 'application/vnd.github.v3+json'
+        }
+        r = requests.get(
+            'https://api.github.com/repos/ABMAmitX/alphea-node/contents/session.json',
+            headers=gh_headers, timeout=15
+        )
+        if r.status_code == 200:
+            raw = base64.b64decode(r.json()['content']).decode('utf-8')
+            d = json.loads(raw)
+            new_access = d.get('accessToken', '')
+            new_refresh = d.get('refreshToken', '')
+            if new_access and new_access != ACCESS_TOKEN and new_refresh:
+                ACCESS_TOKEN = new_access
+                REFRESH_TOKEN = new_refresh
+                print('[*] [SELFHEAL] Loaded FRESH token from GitHub session.json!')
+                return True
+            else:
+                print('[!] [SELFHEAL] GitHub session.json has same/empty token - not helpful')
+                return False
+        else:
+            print(f'[!] [SELFHEAL] GitHub fetch failed: {r.status_code}')
+            return False
+    except Exception as e:
+        print(f'[!] [SELFHEAL] Exception loading from GitHub: {e}')
+        return False
+
+
+def refresh_access_token(retry_from_github=True):
     global ACCESS_TOKEN, REFRESH_TOKEN, last_token_refresh
     url = f'{BASE_URL}/alphea.connect.v1.AuthService/RefreshSession'
     headers = {
@@ -406,6 +443,15 @@ def refresh_access_token():
             save_session()
             print('[*] [AUTH] Session Token refreshed! New rotated credentials auto-saved.')
             return True
+        elif r.status_code == 401 and retry_from_github:
+            print('[!] [AUTH] RefreshSession 401 - token expired! Trying GitHub self-heal...')
+            if force_reload_token_from_github():
+                print('[*] [AUTH] Got fresh token from GitHub, retrying RefreshSession...')
+                return refresh_access_token(retry_from_github=False)
+            else:
+                print('[!] [AUTH] GitHub reload failed. Node will retry in 5 minutes...')
+                time.sleep(300)
+                return False
         else:
             print(f'[!] [AUTH] Refresh failed: {r.status_code} {r.text}')
             return False
@@ -617,7 +663,14 @@ def main():
 
             if time.time() - last_token_refresh > 2700:
                 refresh_access_token()
-                
+
+            # Self-heal: if session_id is None for 10+ minutes, force GitHub token reload
+            if session_id is None and (time.time() - last_token_refresh) > 600:
+                print('[*] [SELFHEAL] Session stuck for 10min - forcing GitHub token reload...')
+                if force_reload_token_from_github():
+                    refresh_access_token(retry_from_github=False)
+                    start_foreground_session()
+
             submit_heartbeat()
             tick += 1
             
