@@ -184,7 +184,11 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
-        uptime_str = format_time(accumulated_seconds)
+        today_total = 0
+        if last_quests_data:
+            today_total = max([int(q.get('measuredValue', 0)) for q in last_quests_data if 'daily-foreground' in q.get('questId', '')] or [0])
+        effective_display = max(accumulated_seconds, today_total)
+        uptime_str = format_time(effective_display)
         quests_html = build_quests_html()
         
         html = f"""<!DOCTYPE html>
@@ -214,7 +218,9 @@ class HealthHandler(BaseHTTPRequestHandler):
             <span class="badge">ONLINE 24/7</span>
         </div>
         <div class="stat"><span class="stat-label">Total Balance:</span><span class="stat-value">{cached_balance:,} Points</span></div>
-        <div class="stat"><span class="stat-label">PC Session Uptime:</span><span class="stat-value">{uptime_str} ({accumulated_seconds:,}s)</span></div>
+        <div class="stat"><span class="stat-label">Today Total Mined:</span><span class="stat-value">{format_time(today_total)} ({today_total:,}s)</span></div>
+        <div class="stat"><span class="stat-label">PC Session Uptime:</span><span class="stat-value">{uptime_str} ({effective_display:,}s)</span></div>
+        <div class="stat"><span class="stat-label">Mining Status:</span><span class="stat-value" style="color: #4ade80;">ACTIVE & MINING</span></div>
         <div class="stat"><span class="stat-label">GitHub Auto-Sync:</span><span class="stat-value" style="color: {'#4ade80' if get_github_token() else '#facc15'};">{'ACTIVE (Safe from restarts)' if get_github_token() else 'Disabled (Add GITHUB_TOKEN)'}</span></div>
         <div class="stat"><span class="stat-label">Account:</span><span style="color:#cbd5e1;">{USER_EMAIL}</span></div>
         <div class="stat"><span class="stat-label">Device ID:</span><span style="font-family:monospace; color:#cbd5e1; font-size:12px;">{DEVICE_ID}</span></div>
@@ -603,11 +609,16 @@ def submit_heartbeat():
         
         if r.status_code == 200:
             data = r.json()
-            new_seconds = int(data.get('accumulatedValidSeconds', str(accumulated_seconds)))
+            server_valid = int(data.get('accumulatedValidSeconds', '0'))
+            today_total = fetch_and_claim_quests()
+            
+            # Server returns 0 in SubmitHeartbeat but tracks real progress in quests
+            effective_seconds = max(server_valid, today_total, accumulated_seconds + 60)
+            accumulated_seconds = effective_seconds
             
             # If 24-hour session limit reached (86,400s), rotate to fresh session for new day!
-            if new_seconds >= 86400:
-                print(f'\n[*] [CYCLE COMPLETE] 24-Hour limit reached ({new_seconds:,}s)!')
+            if accumulated_seconds >= 86400:
+                print(f'\n[*] [CYCLE COMPLETE] 24-Hour limit reached ({accumulated_seconds:,}s)!')
                 print('[*] Rotating to fresh new-day session to continue mining & quests...')
                 session_id = None
                 accumulated_seconds = 0
@@ -615,10 +626,8 @@ def submit_heartbeat():
                 start_foreground_session()
                 return
 
-            accumulated_seconds = new_seconds
-            today_total = fetch_and_claim_quests()
             display_dashboard(accumulated_seconds, today_total)
-            print(f'[{timestamp}] [HEARTBEAT] Sync OK (200) | Valid Session Active | Next tick in 60s...')
+            print(f'[{timestamp}] [HEARTBEAT] Sync OK (200) | Today Mined: {format_time(today_total)} ({today_total}s) | Next in 60s...')
         elif r.status_code == 400 and 'connect foreground session not active' in r.text:
             print(f'[{timestamp}] [HEARTBEAT] Session re-syncing...')
             start_foreground_session()
