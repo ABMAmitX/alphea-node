@@ -251,8 +251,8 @@ SESSION_FILE = os.path.join(os.path.dirname(__file__), 'session.json')
 
 USER_EMAIL = 'amitb1612@gmail.com'
 USER_ID = '3050c315-aa28-4127-81c6-fa67c64f904e'
-REFRESH_TOKEN = 'UBLD9N18ItwKgxinM8ANrz_87CFaCrVrwUHevRd814k'
-ACCESS_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFtaXRiMTYxMkBnbWFpbC5jb20iLCJzaWQiOiI5MmYxNjRhZi03MjA1LTRlMjEtOGE3Zi0yZWJhNzg4NmUxZmQiLCJhdXRoX3RpbWUiOjE3OTEwMDI4NzQsImlzcyI6ImFscGhlYS1jb25uZWN0Iiwic3ViIjoiMzA1MGMzMTUtYWEyOC00MTI3LTgxYzYtZmE2N2M2NGY5MDRlIiwiZXhwIjoxNzkxMDA2NDc0LCJpYXQiOjE3OTEwMDI4NzR9.JSxlkgYn6d7VYp1Vh91UiGFwE8h8oZYoJ5Lwchf6PHQ'
+REFRESH_TOKEN = 'V9Ke4z5paB4Ilk0_neAKMzFNox-WV_vsHWCeGWspMs8'
+ACCESS_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFtaXRiMTYxMkBnbWFpbC5jb20iLCJzaWQiOiIzYTgwOGFjOC0xODI2LTQwMTktYTkwYi1iYTNkNGVkZDM4OWMiLCJhdXRoX3RpbWUiOjE3OTEwODI2OTUsImlzcyI6ImFscGhlYS1jb25uZWN0Iiwic3ViIjoiMzA1MGMzMTUtYWEyOC00MTI3LTgxYzYtZmE2N2M2NGY5MDRlIiwiZXhwIjoxNzkxMDg2Mjk1LCJpYXQiOjE3OTEwODI2OTV9.mJHWzByLBdp142YE8aQ2uPjoC9-CqQQp36BPcAMCB_4'
 
 # Genuine Android Hardware Identifier (16-char Hex Android ID)
 DEVICE_ID = 'e4d7abm9y2c3f4e5'
@@ -275,8 +275,10 @@ def sync_to_github():
     if not github_token:
         return
     repo = os.environ.get('GITHUB_REPO', 'ABMAmitX/alphea-node')
+    # Use token-sync branch so Render auto-deploy never kills the running container!
+    branch = 'token-sync'
     file_path = 'session.json'
-    url = f'https://api.github.com/repos/{repo}/contents/{file_path}'
+    url = f'https://api.github.com/repos/{repo}/contents/{file_path}?ref={branch}'
     headers = {
         'Authorization': f'Bearer {github_token}',
         'Accept': 'application/vnd.github.v3+json',
@@ -287,7 +289,7 @@ def sync_to_github():
         sha = None
         if r.status_code == 200:
             sha = r.json().get('sha')
-        
+
         data = {
             'email': USER_EMAIL,
             'userId': USER_ID,
@@ -297,17 +299,19 @@ def sync_to_github():
         }
         content_bytes = json.dumps(data, indent=2).encode('utf-8')
         content_b64 = base64.b64encode(content_bytes).decode('utf-8')
-        
+
         payload = {
             'message': '[Auto-Sync] Update rotated session tokens',
-            'content': content_b64
+            'content': content_b64,
+            'branch': branch
         }
         if sha:
             payload['sha'] = sha
-            
-        r2 = requests.put(url, headers=headers, json=payload, timeout=10)
+
+        put_url = f'https://api.github.com/repos/{repo}/contents/{file_path}'
+        r2 = requests.put(put_url, headers=headers, json=payload, timeout=10)
         if r2.status_code in [200, 201]:
-            print('[*] [GITHUB AUTO-SYNC] Successfully synced latest rotated tokens to GitHub repository!')
+            print('[*] [GITHUB AUTO-SYNC] Token synced to token-sync branch (no Render restart)!')
         else:
             print(f'[!] [GITHUB AUTO-SYNC] Notice ({r2.status_code}): {r2.text[:100]}')
     except Exception as e:
@@ -320,7 +324,7 @@ def load_session():
     repo = os.environ.get('GITHUB_REPO', 'ABMAmitX/alphea-node')
     if github_token:
         try:
-            url = f'https://api.github.com/repos/{repo}/contents/session.json'
+            url = f'https://api.github.com/repos/{repo}/contents/session.json?ref=token-sync'
             r = requests.get(url, headers={'Authorization': f'Bearer {github_token}', 'User-Agent': 'alphea-node'}, timeout=10)
             if r.status_code == 200:
                 raw = base64.b64decode(r.json()['content']).decode('utf-8')
