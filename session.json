@@ -4,5 +4,6 @@
   "tokenType": "Bearer",
   "userId": "3050c315-aa28-4127-81c6-fa67c64f904e",
   "email": "amitb1612@gmail.com",
-  "accountId": "c988a3d4-c3a9-43b7-bf28-b25be891dc67"
+  "accountId": "c988a3d4-c3a9-43b7-bf28-b25be891dc67",
+  "test": "test_write"
 }
