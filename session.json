@@ -1,9 +1,8 @@
 {
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFtaXRiMTYxMkBnbWFpbC5jb20iLCJzaWQiOiIzYTgwOGFjOC0xODI2LTQwMTktYTkwYi1iYTNkNGVkZDM4OWMiLCJhdXRoX3RpbWUiOjE3OTEwODI2OTUsImlzcyI6ImFscGhlYS1jb25uZWN0Iiwic3ViIjoiMzA1MGMzMTUtYWEyOC00MTI3LTgxYzYtZmE2N2M2NGY5MDRlIiwiZXhwIjoxNzkxMDg2Mjk1LCJpYXQiOjE3OTEwODI2OTV9.mJHWzByLBdp142YE8aQ2uPjoC9-CqQQp36BPcAMCB_4",
-  "refreshToken": "V9Ke4z5paB4Ilk0_neAKMzFNox-WV_vsHWCeGWspMs8",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFtaXRiMTYxMkBnbWFpbC5jb20iLCJzaWQiOiIzNzU5ZjA2Yi04NmQ2LTRhNGQtOTE0Yi02Mjc0YzVhZTkyZjQiLCJhdXRoX3RpbWUiOjE3OTExNjQ1MzYsImlzcyI6ImFscGhlYS1jb25uZWN0Iiwic3ViIjoiMzA1MGMzMTUtYWEyOC00MTI3LTgxYzYtZmE2N2M2NGY5MDRlIiwiZXhwIjoxNzkxMTY4MTM2LCJpYXQiOjE3OTExNjQ1MzZ9.Esvp8n9k3CD9c36eiv0CBbaWbH35HzwAKwe5JasQzLI",
+  "refreshToken": "DZSnTuS5KsFjvrjZkkngGpyTpezGp83XAsm_M6YIxVw",
   "tokenType": "Bearer",
   "userId": "3050c315-aa28-4127-81c6-fa67c64f904e",
   "email": "amitb1612@gmail.com",
-  "accountId": "c988a3d4-c3a9-43b7-bf28-b25be891dc67",
-  "test": "test_write"
+  "accountId": "c988a3d4-c3a9-43b7-bf28-b25be891dc67"
 }
