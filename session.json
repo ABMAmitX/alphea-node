@@ -1,8 +1,7 @@
 {
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFtaXRiMTYxMkBnbWFpbC5jb20iLCJzaWQiOiIzNzU5ZjA2Yi04NmQ2LTRhNGQtOTE0Yi02Mjc0YzVhZTkyZjQiLCJhdXRoX3RpbWUiOjE3OTExNjQ1MzYsImlzcyI6ImFscGhlYS1jb25uZWN0Iiwic3ViIjoiMzA1MGMzMTUtYWEyOC00MTI3LTgxYzYtZmE2N2M2NGY5MDRlIiwiZXhwIjoxNzkxMTY4MTM2LCJpYXQiOjE3OTExNjQ1MzZ9.Esvp8n9k3CD9c36eiv0CBbaWbH35HzwAKwe5JasQzLI",
-  "refreshToken": "DZSnTuS5KsFjvrjZkkngGpyTpezGp83XAsm_M6YIxVw",
-  "tokenType": "Bearer",
-  "userId": "3050c315-aa28-4127-81c6-fa67c64f904e",
   "email": "amitb1612@gmail.com",
-  "accountId": "c988a3d4-c3a9-43b7-bf28-b25be891dc67"
+  "userId": "3050c315-aa28-4127-81c6-fa67c64f904e",
+  "deviceId": "e4d7abm9y2c3f4e5",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFtaXRiMTYxMkBnbWFpbC5jb20iLCJzaWQiOiIzNzU5ZjA2Yi04NmQ2LTRhNGQtOTE0Yi02Mjc0YzVhZTkyZjQiLCJhdXRoX3RpbWUiOjE3OTExNjQ1MzYsImlzcyI6ImFscGhlYS1jb25uZWN0Iiwic3ViIjoiMzA1MGMzMTUtYWEyOC00MTI3LTgxYzYtZmE2N2M2NGY5MDRlIiwiZXhwIjoxNzkxMTcxNjE2LCJpYXQiOjE3OTExNjgwMTZ9.PUCtsN9POkfjovGuz-x2tYXU2z0O4dtZ8Vbpk7zvp-Y",
+  "refreshToken": "lp_XMs4e5x6WGZISnwB9X8U7HsNqeNfaCRkudadbO54"
 }
