@@ -396,6 +396,7 @@ def render_bar(current, total, length=14):
 
 def force_reload_token_from_github():
     """Pull latest token from GitHub session.json - used when local token is expired."""
+    global ACCESS_TOKEN, REFRESH_TOKEN
     gh_token = get_github_token()
     if not gh_token:
         print('[!] [SELFHEAL] No GITHUB_TOKEN env var - cannot reload from GitHub')
@@ -431,6 +432,7 @@ def force_reload_token_from_github():
 
 
 def refresh_access_token(retry_from_github=True):
+    global ACCESS_TOKEN, REFRESH_TOKEN, last_token_refresh
     url = f'{BASE_URL}/alphea.connect.v1.AuthService/RefreshSession'
     headers = {
         'Content-Type': 'application/json',
@@ -671,7 +673,7 @@ def main():
                 accumulated_seconds = 0
                 start_foreground_session()
 
-            if time.time() - last_token_refresh > 2700:
+            if time.time() - last_token_refresh > 2400:
                 refresh_access_token()
 
             # Self-heal: if session_id is None for 10+ minutes, force GitHub token reload
